@@ -3,7 +3,11 @@ title: "Lee-Carter Model in Forecasting Mortality Rate"
 author: "Ang Jia Yi"
 date: "2024-12-04"
 output:
-  html_document
+    html_document:
+      toc: true
+      toc_float: true
+      theme: journal
+      self_contained: true  # Embeds all CSS/JS in the HTML file
 ---
 
 ```{=html}
