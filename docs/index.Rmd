@@ -14,6 +14,15 @@ p {
 </style>
 ```
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readxl)
+library(ggplot2)
+library(fpp2)
+library(tidyverse)
+library(dplyr)
+```
 
 # Original Mortality Rate
 ## Male Mortality Rate (Raw)
