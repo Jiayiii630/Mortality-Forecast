@@ -14,7 +14,9 @@ p {
 </style>
 ```
 
-```{r}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
 library(readxl)
 library(ggplot2)
 library(fpp2)
