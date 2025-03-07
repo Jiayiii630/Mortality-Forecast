@@ -7,7 +7,6 @@ output:
       toc: true
       toc_float: true
       theme: journal
-      self_contained: true  # Embeds all CSS/JS in the HTML file
 ---
 
 ```{=html}
