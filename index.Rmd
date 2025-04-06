@@ -1,0 +1,388 @@
+---
+title: "Forecast of Kelana Jaya LRT Ridership"
+author: "Ang Jia Yi"
+date: "2024-12-07"
+output:
+    html_document:
+      toc: true
+      toc_float: true
+      theme: journal
+---
+
+```{=html}
+<style>
+p {
+    text-align: justify;
+}
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(fpp2)
+```
+
+# Data Import
+
+```{r}
+# Import dataset and convert into time series data
+excel <- read.csv("C:/Users/User/Desktop/Data/LRT KJL Monthly Ridership Dataset.csv")
+data <- ts(excel[,-1],start=c(2019,1),frequency=12)
+```
+
+# Data Visualization
+
+This section presents visualizations of the raw data of monthly
+ridership for LRT Kelana Jaya line.
+
+## Overview
+
+To obtain the general trend of LRT Kelana Jaya across the years:
+
+```{r}
+autoplot(data) +
+  labs(y = "Monthly Ridership",
+       x = "Year",
+       title = "Monthly ridership of LRT Kelana Jaya")
+```
+
+**Cyclical**
+
+-   Does not exhibit cyclical pattern.
+
+**Seasonality**
+
+-   Does not show clear seasonality, except for some peaks and troughs
+    that seem to be repeating at regular intervals before 2020 and after
+    2024. 
+-   Could be signs of seasonality, but more data is needed to confirm
+    its presence.
+
+**Trend**
+
+-   The trend varies across different time periods.
+-   Beginning at 2019, the graph shows a linear increasing trend until a
+    structural break occurs in January 2020, where the ridership drops
+    sharply, reaching its lowest point in April 2020.
+-   The initial rise in ridership suggests that more people were
+    choosing LRT Kelana Jaya as their mode of commute. However, the
+    number of commuters decreased significantly following the outbreak
+    of COVID-19 cases in Malaysia in early 2020. The drop in ridership
+    was further exacerbated by the implementation of the Movement
+    Control Order (MCO) on 18th March 2020.
+-   After the sharp decline, the graph displays no clear trend from May
+    2020 to May 2021. The fluctuations during this period are probably
+    because of the repeating enforcement and lifting of various MCO
+    phases.
+-   From June 2021 onward, the plot exhibits a non-linear increasing
+    trend after the final MCO in June 2021 was lifted.
+
+## Seasonal
+
+A more detailed view of how the ridership behaves across months and
+between years, as well as to check for the presence of seasonality.
+
+```{r}
+ggseasonplot(data, year.labels = T, year.labels.left = T) +
+  labs(title = "Seasonal plot: Monthly ridership of LRT Kelana Jaya")
+```
+
+-   Does not display a consistent and similar pattern across all years
+    due to COVID-19, hence it is unlikely for the whole dataset to
+    exhibit seasonality pattern.
+-   However, the plots for 2019, 2023 and 2024 display some similarities
+    in their peaks and troughs.
+-   Despite the similarities, the timing of peaks and troughs is not
+    strictly regular, which may suggest that the series is influenced by
+    irregular factors rather than a true seasonal componentsuch as
+    changes in public transport policies or temporary shifts in commuter
+    behaviour.
+-   For now, the data does not show strong evidence of seasonality.
+
+## Seasonally adjusted
+
+The seasonally adjusted data is obtained and plotted using STL
+decomposition to have a greater look on the underlying trend after
+factoring out the seasonal effects.
+
+```{r}
+# STL decomposition and plot the seasonally adjusted data
+KJL.stl <- stl(data, s.window = "periodic")
+autoplot(seasadj(KJL.stl)) + 
+  labs(y = "Monthly Ridership",
+       x = "Year",
+       title = "Seasonally adjusted monthly ridership of LRT Kelana Jaya")
+```
+
+-   The seasonally adjusted plot generally follows a similar trend as
+    the time plot.
+-   Since the seasonally adjusted plot highlights the underlying trend
+    without seasonal effects, and it is generally similar to the time
+    plot, hence this indicates the seasonal component has a minor effect
+    on the ridership of LRT Kelana Jaya line.
+-   The ridership is more likely influenced by external factors such as
+    the COVID-19 outbreak and implementations of MCO.
+
+# Pre-Process Data
+
+Since our goal is to forecast the monthly ridership of LRT Kelana Jaya
+for the next 2 years from July 2024, which currently there are rarely
+any COVID-19 cases, hence the data before June 2021 is irrelevant to our
+forecast goal as it includes the effect of MCO due to high volume of
+COVID-19 cases. Hence, the time span chosen as our full dataset to
+forecast the future monthly ridership is June 2021 to July 2024.
+
+```{r}
+KJL <- window(data, start = c(2021,6))
+```
+
+# Partition Series
+
+The full dataset is partitioned into training and test sets.
+
+|                        | Training Set               | Test set                  |
+|----------------------|--------------------------|-------------------------|
+| Time period            | June 2021 to December 2023 | January 2024 to July 2024 |
+| Number of observations | 31                         | 7                         |
+
+```{r}
+train <- window(KJL, end = c(2023,12))
+test <- window(KJL, start = c(2024,1))
+```
+
+# Forecasting Methods/Models Identification
+
+This section compare and evaluate four forecasting models chosen based
+on the characteristics of the test set data.
+
+## Models Selection
+
+**(1) Random Walk Drift Method**
+
+- suitable as the test set data has a constant increasing trend that fluctuates randomly
+```{r}
+# (1) Random Walk Drift Method
+fc1 <- rwf(train, drift = TRUE, h = length(test))
+```
+
+**(2) STL decomposition with ETS Model**
+
+- The seasonally adjusted plot shows a relatively consistent random variation across the level of the series: _additive error_ 
+- An evident upward trend that shows no signs of tapering off: _additive trend without damping_ 
+- Since the data is seasonally adjusted, it does not pose seasonality: _none seasonality_ 
+- ETS(A,A,N)  model with both additive error and trend with no seasonality would optimally fit the seasonally adjusted data.
+
+```{r}
+# 
+fc2 <- stlf(train, etsmodel = "AAN", damped = FALSE, h = length(test))
+```
+
+**(3) ETS Model**
+
+- Since the time plot and seasonally adjusted plot are similar in nature, combining no seasonality pattern was identified during the previous section.
+- Hence, ETS(A,A,N) model with both additive error and trend with no seasonality would optimally fit the training set data.
+
+```{r}
+fc3 <- train %>%
+  ets(model = "AAN", damped = FALSE) %>%
+  forecast(h = length(test))
+```
+
+**(4) ETS Model Selected by R**
+
+- An ETS model auto-selected by R is also included in the selection of models.
+- The model chosen by R is ETS(M,A,N).
+```{r}
+fc4 <- train %>% 
+  ets(model = "ZZZ") %>% 
+  forecast(h = length(test))
+```
+
+## Parameter Estimation
+
+```{r}
+# Parameter Estimates and Initial Values for ETS model
+summary(fc2)
+summary(fc3)
+summary(fc4)
+```
+
+## Fitted Values
+
+```{r}
+# Plot training set data with fitted values from each methods
+autoplot(train, series = "Data") +
+  autolayer(fitted(fc1), series = "Fitted") +
+  labs(title = "Drift Method",
+       x = "Year",
+       y = "Monthly Ridership")
+
+autoplot(train, series = "Data") +
+  autolayer(fitted(fc2), series = "Fitted") +
+  labs(title = "STL Decomposition + ETS(A,A,N)",
+       x = "Year",
+       y = "Monthly Ridership")
+
+autoplot(train,series = "Data") +
+  autolayer(fitted(fc3), series = "Fitted") +
+  labs(title = "ETS(A,A,N)",
+       x = "Year",
+       y = "Monthly Ridership")
+
+autoplot(train, series = "Data") +
+  autolayer(fitted(fc4), series = "Fitted") +
+  labs(title="ETS(M,A,N)",
+       x = "Year",
+       y = "Monthly Ridership")
+```
+
+All of the four models are to capture the patterns of the training set data to a different extend. 
+
+## Residual Diagnostic Checks
+
+To ensure there is no information left that should be used in computing the forecast, the forecast residuals must possess the following characeristics:
+
+- residuals are uncorrelated.
+- residuals have mean 0.
+- residuals have constant variance
+
+```{r}
+checkresiduals(fc1) 
+checkresiduals(fc2)
+checkresiduals(fc3)
+checkresiduals(fc4)
+```
+
+### Ljung-box Test
+There are a total of 6 lags used in this hypothesis testing. The hypotheses for the Ljung-Box test are as follows:
+
+Null hypothesis, $H_0: \rho_1 = \rho_2 = ... = \rho_{10} = 0$
+
+Alternative hypothesis, $H_1:$ At least one $\rho_k \neq 0,$ where $k = 0, 1, 2, ..., 6$
+
+Since only the p-value of the *Method (1)* is smaller than $\alpha = 0.05$. Therefore, we have insufficient evidence to reject the null hypothesis at 5% significance level and concluded that there are no autocorrelations between the residuals for the remaining three models.
+
+### Time Plot
+Residuals of all four models have constant variance.
+
+### ACF Graph
+For a white noise series, we expect that 95% of the number of lags in the ACF to be within the confidence interval at a 5% significance level. With a total of 10 lags in the ACF plot, at least 9 lags should be bounded within the critical values for the residuals to be a white noise process. *Method (1)* and *Model (2)* both have 2 lags that have autocorrelations, which slightly exceeded our requirements.
+
+### Histogram
+Residuals of all four models are normally distributed with mean 0.
+
+### Conclusion
+*Model (3)* and *Model (4)* are preferred as the residuals are a white noise process, indicating most of the important information is used in computing the forecast.
+
+## Goodness-of-Fit
+
+```{r}
+accuracy(fc1)
+accuracy(fc2)
+accuracy(fc3)
+accuracy(fc4)
+```
+
+*Model (2)* has a significanly higher accuracy compared to the remaining models, with its lowest values across all listed accuracy measures thus pertaining the best goodness of fit.
+
+## Forecast of Test Set Period
+
+```{r}
+# Forecast for the test set using each methods
+autoplot(KJL) +
+  labs(x = "Year",
+       y = "Monthly ridership",
+       title = "Forecast of monthly ridership of LRT Kelana Jaya") +
+  autolayer(fc1, series = "Drift Method", PI = F) +
+  autolayer(fc2, series = "STL Decomposition + ETS (A,A,N)",PI = F) +
+  autolayer(fc3, series = "ETS (A,A,N)", PI = F) +
+  autolayer(fc4, series = "ETS (M,A,N)", PI = F) +
+  guides(colour = guide_legend(title = "Forecast"))
+
+# Shows only test set and forecast
+autoplot(test) +
+  labs(x = "Year",
+       y = "Monthly ridership",
+       title = "Forecast of monthly ridership of LRT Kelana Jaya") +
+  autolayer(fc1, series = "Drift Method", PI = F) +
+  autolayer(fc2, series = "STL Decomposition + ETS (A,A,N)",PI = F) +
+  autolayer(fc3, series = "ETS (A,A,N)", PI = F) +
+  autolayer(fc4, series = "ETS (M,A,N)", PI = F) +
+  guides(colour = guide_legend(title = "Forecast"))
+```
+
+# Forecasting Performance Evaluation
+
+## Traditional Approach
+
+```{r}
+acc_model1 <- accuracy(fc1,test)[2,]
+acc_model2 <- accuracy(fc2,test)[2,]
+acc_model3 <- accuracy(fc3,test)[2,]
+acc_model4 <- accuracy(fc4,test)[2,]
+```
+
+```{r}
+# Forecast Accuracy based on test set
+cbind(acc_model1, acc_model2, acc_model3, acc_model4)
+```
+
+*Model (2)* depicted the lowest error values for all accuracy measures across method/models, signifying that it was the best model with the highest out-of-sample forecast accuracy.
+
+## Modern Approach: Time series cross validation
+
+```{r}
+# Let fets1 be the forecast function that produces forecasts for ETS(A,A,N) model
+fets1 <- function(x,h){
+  forecast(ets(x, model = "AAN",damped = FALSE),h = h)
+}
+
+# Let fets2 be the forecast function that produces forecasts for ETS(M,A,N) model
+fets2 <- function(x,h){
+  forecast(ets(x, model = "MAN", damped = FALSE), h = h)
+}
+
+# Obtain forecast errors
+e1 <- tsCV(KJL, rwf, drift = TRUE, h = 4)
+e2 <- tsCV(KJL, stlf, etsmodel = "AAN", damped = FALSE, h = 4)
+e3 <- tsCV(KJL, fets1, h = 4)
+e4 <- tsCV(KJL, fets2, h = 4)
+
+# RMSE
+sqrt(colMeans(e1^2, na.rm = TRUE))
+sqrt(colMeans(e2^2, na.rm = TRUE))
+sqrt(colMeans(e3^2, na.rm = TRUE))
+sqrt(colMeans(e4^2, na.rm = TRUE))
+
+```
+*Model (2)* also obtained the lowest RMSE using the time series cross-validation method, signifying that it was the best model with the highest out-of-sample forecast accuracy.
+
+# Model Selection
+
+Despite the residuals of *Model (2)* are statistically autocorrelated, but it is only borderline significant. On the other hand, the forecast accuracy of *Model (2)* is significantly higher than the remaining models. Hence, *Model (2)*, STL + ETS(A,A,N) is chosen as the optimal model for forecasting the monthly ridership on Kelana Jaya LRT line as it fits the historical data best and gives the most accurate forecast among all the models.
+
+# Forecast Implementation
+
+By using the selected model which is STL + ETS (A, A, N), the monthly ridership for Kelana Jaya Line if forecasted for the future 24 months.
+
+```{r}
+# Re-estimating Parameters and Initial Values
+fc5 <- stlf(KJL, etsmodel = "AAN", damped = FALSE, h = 24, level = 95)
+summary(fc5)
+
+# Plot full dataset with the forecasts
+autoplot(KJL) +
+  autolayer(fc5, series = "STL + ETS (A,A,N)", PI = TRUE) +
+  labs(y = "Monthly Riderships",
+       x = "Year",
+       title = "24-step-ahead forecast of Monthly Ridership on the Kelana Jaya Light Rail Transit")
+```
+
+- The solid red line represents the median ridership, which shown the ridership will continue to rise for the future 24 months
+- The shaded area represents the 95% forecast interval, which provide the range that may contain future observation within 95% probability.
+- The forecast interval is widening over time, indicating there is enormous of uncertainty associated with the forecast.
+- The upper bound of the forecast interval shows a rapid increase in ridership, which may be driven by factors such as increasing population in Klang Valley and increased adoption of public transport die to policy changes.
+- The lower bound of forecast interval indicates the possibility of decrease in ridership growth. This could be due to more unexpected factors leading to the adoption of other transportation options.
+- However, looking at the historical pattern that was steadily increasing, the decreasing pattern potrayed by the lower bound of the forecast interval deemed to be unreasonable.
+- To conclude, the Malaysian government need to continuously monitor the actual ridership of LRT Kelana Jaya line to make adjustments accordingly, acknowledging the lower bound of the prediction interval.
