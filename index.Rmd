@@ -1,0 +1,807 @@
+---
+title: "Lee-Carter Model in Forecasting Mortality Rate"
+author: "Ang Jia Yi"
+date: "2024-12-04"
+output:
+    html_document:
+      toc: true
+      toc_float: true
+      theme: journal
+---
+
+```{=html}
+<style>
+p {
+    text-align: justify;
+}
+</style>
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readxl)
+library(ggplot2)
+library(fpp2)
+library(tidyverse)
+library(dplyr)
+```
+
+# Original Mortality Rate
+## Male Mortality Rate (Raw)
+```{r}
+male_data <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male Central Mortality Rate.xlsx")
+
+# Reshape data into long format for ggplot
+male_data_long <- male_data %>%
+  pivot_longer(cols = -Age, names_to = "Year", values_to = "MortalityRate") %>%
+  mutate(
+    Year = as.numeric(Year),  # Convert Year to numeric for proper sorting
+    LogMortalityRate = log(MortalityRate)  # Calculate log mortality rates
+  )
+
+# Plot the data with a rainbow gradient
+ggplot(male_data_long, aes(x = Age, y = LogMortalityRate, group = Year, color = Year)) +
+  geom_line() +
+  scale_color_gradientn(
+    colors = rainbow(7),  # Use 7 colors from red to violet for a rainbow
+    name = "Year"
+  ) +
+  labs(
+    title = "Male Mortality Rates (Log Scale)",
+    x = "Age",
+    y = "Log Mortality Rate"
+  ) +
+  theme_minimal()
+```
+
+## Female Mortality Rate (Raw)
+
+```{r}
+female_data <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female Central Mortality Rate.xlsx")
+
+# Reshape data into long format for ggplot
+female_data_long <- female_data %>%
+  pivot_longer(cols = -Age, names_to = "Year", values_to = "MortalityRate") %>%
+  mutate(
+    Year = as.numeric(Year),  # Convert Year to numeric for proper sorting
+    LogMortalityRate = log(MortalityRate)  # Calculate log mortality rates
+  )
+
+# Plot the data with a rainbow gradient
+ggplot(female_data_long, aes(x = Age, y = LogMortalityRate, group = Year, color = Year)) +
+  geom_line() +
+  scale_color_gradientn(
+    colors = rainbow(7),  # Use 7 colors from red to violet for a rainbow
+    name = "Year"
+  ) +
+  labs(
+    title = "Female Mortality Rates (Log Scale)",
+    x = "Age",
+    y = "Log Mortality Rate"
+  ) +
+  theme_minimal()
+```
+
+# Model Fitting and Testing
+
+## Parameter Estimation
+
+### Male
+```{r}
+M_train <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation (training test).xlsx", sheet = "training matrix", col_names = F)
+M_train_matrix <- as.matrix(M_train)
+
+svd_train <- svd(M_train_matrix)
+
+# Extracting the components
+U_train <- svd_train$u
+D_train <- diag(svd_train$d)
+V_train <- svd_train$v
+
+# Estimate bx (first column of U matrix multiplied by the first singular value)
+bx_train <- U_train[,1]
+
+# Estimate kt (first column of V matrix multiplied by the first singular value)
+kt_train <- D_train[1,1] * V_train[,1]
+
+# Normalize bx and adjust kt accordingly
+bx_train <- bx_train / sum(bx_train)  # Normalizing bx to sum to 1
+kt_train <- kt_train * sum(bx_train)
+```
+
+```{r}
+parameters_train <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation (training test).xlsx", sheet = "estimated ax bx")
+
+
+# Plot ax with age as x-axis
+ggplot(parameters_train, aes(x = x, y = ax)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated ax", x = "Age (x)", y = "ax") +
+  theme_minimal()
+
+# Plot bx with age as x-axis
+ggplot(parameters_train, aes(x = x, y = bx)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated bx", x = "Age (x)", y = "bx") +
+  theme_minimal()
+```
+
+
+```{r}
+kt_train <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation (training test).xlsx", sheet = "estimated kt")
+
+# Plot kt with Year as x-axis
+ggplot(kt_train, aes(x = t, y = kt)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated kt", x = "Year (t)", y = "kt") +
+  theme_minimal()
+
+# Convert kt to a time series object
+kt_train_ts <- ts(kt_train[,-1], start = c(2001), frequency = 1)
+
+ggtsdisplay(kt_train_ts)
+ggtsdisplay(diff(kt_train_ts))
+
+auto.arima(kt_train_ts)
+
+# Fit ARIMA(0,1,0) model
+arima_010_train <- Arima(kt_train_ts, order = c(0, 1, 0), include.drift = TRUE)
+arima_011_train <- Arima(kt_train_ts, order = c(0, 1, 1), include.drift = TRUE)
+
+# Print the summary of the ARIMA model
+summary(arima_010_train)
+summary(arima_011_train)
+
+# Forecast future kt values (e.g., next 20 years)
+kt_train_forecast_010 <- forecast(arima_010_train, h = 5)
+kt_train_forecast_011 <- forecast(arima_011_train, h = 5)
+
+# Plot the forecast
+plot(kt_train_forecast_010, main = "Forecast of kt using ARIMA(0,1,0)", xlab = "Year", ylab = "kt")
+plot(kt_train_forecast_011, main = "Forecast of kt using ARIMA(0,1,1)", xlab = "Year", ylab = "kt")
+
+# Check residuals
+checkresiduals(arima_010_train)
+checkresiduals(arima_011_train)
+```
+
+### Female
+
+```{r}
+M_F_train <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation (training test).xlsx", sheet = "training matrix", col_names = F)
+M_F_train_matrix <- as.matrix(M_F_train)
+
+svd_train_F <- svd(M_F_train_matrix)
+
+# Extracting the components
+U_train <- svd_train_F$u
+D_train <- diag(svd_train_F$d)
+V_train <- svd_train_F$v
+
+# Estimate bx (first column of U matrix multiplied by the first singular value)
+bx_train <- U_train[,1]
+
+# Estimate kt (first column of V matrix multiplied by the first singular value)
+kt_train <- D_train[1,1] * V_train[,1]
+
+# Normalize bx and adjust kt accordingly
+bx_train <- bx_train / sum(bx_train)  # Normalizing bx to sum to 1
+kt_train <- kt_train * sum(bx_train)
+```
+
+```{r}
+parameters_train <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation (training test).xlsx", sheet = "estimated ax bx")
+
+
+# Plot ax with age as x-axis
+ggplot(parameters_train, aes(x = x, y = ax)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated ax", x = "Age", y = "ax") +
+  theme_minimal()
+
+# Plot bx with age as x-axis
+ggplot(parameters_train, aes(x = x, y = bx)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated bx", x = "Age", y = "bx") +
+  theme_minimal()
+
+kt_train <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation (training test).xlsx", sheet = "estimated kt")
+
+# Plot kt with Year as x-axis
+ggplot(kt_train, aes(x = t, y = kt)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated kt", x = "Year", y = "kt") +
+  theme_minimal()
+```
+
+```{r}
+# Convert kt to a time series object
+kt_train_ts <- ts(kt_train[,-1], start = c(2001), frequency = 1) 
+
+# identifying potential ARIMA models
+ggtsdisplay(kt_train_ts)
+ggtsdisplay(diff(kt_train_ts))
+#ACF and PACF both have no spike: p=0,q=0,d=1, include constant
+
+auto.arima(kt_train_ts)
+# ARIMA(0,1,0) with drift
+
+# Fit ARIMA(0,1,0) model
+arima_010_train <- Arima(kt_train_ts, order = c(0, 1, 0), include.drift = TRUE)
+arima_010_train_wo <- Arima(kt_train_ts, order = c(0, 1, 0))
+# Print the summary of the ARIMA model
+summary(arima_010_train)
+summary(arima_010_train_wo)
+
+# Forecast future kt values
+kt_train_forecast <- forecast(arima_010_train, h = 5)
+kt_train_forecast_wo <- forecast(arima_010_train_wo, h = 5)
+
+# Plot the forecast
+plot(kt_train_forecast, main = "Forecast of kt using ARIMA(0,1,0) with drift", xlab = "Year", ylab = "kt")
+plot(kt_train_forecast_wo, main = "Forecast of kt using ARIMA(0,1,0)", xlab = "Year", ylab = "kt")
+
+# Check residuals
+checkresiduals(arima_010_train)
+checkresiduals(arima_010_train_wo)
+```
+
+
+## Fitted Values (training set)
+
+### Male
+```{r}
+# Read the data
+data_training_m <- Mortality_Rates <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Mortality_Rates.xlsx", sheet="Male")
+
+# Log-transform the rates
+data_training_m <- data_training_m %>%
+  mutate(
+    Log_Actual_Rate = log(Actual_Rate),
+    Log_Fitted_Rate = log(Fitted_Rate)
+  )
+
+# Plot comparison for each year
+ggplot(data_training_m, aes(x = Age)) +
+  geom_line(aes(y = Log_Actual_Rate, color = "Actual"), size = 1) +
+  geom_line(aes(y = Log_Fitted_Rate, color = "Fitted (LC Model)"), linetype = "dotted", size = 1) +
+  facet_wrap(~Year, ncol = 1, scales = "free_y") +  # Separate plots for each year
+  scale_color_manual(values = c("Actual" = "grey", "Fitted (LC Model)" = "black")) +
+  labs(
+    title = "Comparison of Actual vs. Fitted Log Male Mortality Rates",
+    x = "Age",
+    y = "Log Mortality Rate",
+    color = "Rate Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+### Female
+```{r}
+# Read the data
+data_training_f <- Mortality_Rates <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Mortality_Rates.xlsx", sheet="Female")
+
+# Log-transform the rates
+data_training_f <- data_training_f %>%
+  mutate(
+    Log_Actual_Rate = log(Actual_Rate),
+    Log_Fitted_Rate = log(Fitted_Rate)
+  )
+
+# Plot comparison for each year
+ggplot(data_training_f, aes(x = Age)) +
+  geom_line(aes(y = Log_Actual_Rate, color = "Actual"), size = 1) +
+  geom_line(aes(y = Log_Fitted_Rate, color = "Fitted (LC Model)"), linetype = "dotted", size = 1) +
+  facet_wrap(~Year, ncol = 1, scales = "free_y") +  # Separate plots for each year
+  scale_color_manual(values = c("Actual" = "grey", "Fitted (LC Model)" = "black")) +
+  labs(
+    title = "Comparison of Actual vs. Fitted Female Log Mortality Rates",
+    x = "Age",
+    y = "Log Mortality Rate",
+    color = "Rate Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+## Predicted Values (test set)
+
+### Male
+```{r}
+data_test_m <- Mortality_Rates <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Mortality_Rates.xlsx", sheet="Male test")
+
+# Log-transform the rates
+data_test_m <- data_test_m %>%
+  mutate(
+    Log_Actual_Rate = log(Actual_Rate),
+    Log_Fitted_Rate1 = log(Fitted_Rate_ARIMA1),
+  )
+
+# Plot comparison for each year
+ggplot(data_test_m, aes(x = Age)) +
+  geom_line(aes(y = Log_Actual_Rate, color = "Actual"), size = 1) +
+  geom_line(aes(y = Log_Fitted_Rate1, color = "Forecasted"), linetype = "dotted", size = 1) +
+  facet_wrap(~Year, ncol = 1, scales = "free_y") +  # Separate plots for each year
+  scale_color_manual(values = c("Actual" = "grey", "Forecasted" = "black")) +
+  labs(
+    title = "Comparison of Actual vs. Forecasted Log Male Mortality Rates",
+    x = "Age",
+    y = "Log Mortality Rate",
+    color = "Rate Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+### Female
+```{r}
+data_test_f <- Mortality_Rates <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Mortality_Rates.xlsx", sheet="Female test")
+
+# Log-transform the rates
+data_test_f <- data_test_f %>%
+  mutate(
+    Log_Actual_Rate = log(Actual_Rate),
+    Log_Fitted_Rate1 = log(Fitted_Rate_ARIMA1),
+  )
+
+# Plot comparison for each year
+ggplot(data_test_f, aes(x = Age)) +
+  geom_line(aes(y = Log_Actual_Rate, color = "Actual"), size = 1) +
+  geom_line(aes(y = Log_Fitted_Rate1, color = "Forecasted"), linetype = "dotted", size = 1) +
+  facet_wrap(~Year, ncol = 1, scales = "free_y") +  # Separate plots for each year
+  scale_color_manual(values = c("Actual" = "grey", "Forecasted" = "black")) +
+  labs(
+    title = "Comparison of Actual vs. Forecasted Log Female Mortality Rates",
+    x = "Age",
+    y = "Log Mortality Rate",
+    color = "Rate Type"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+# Male Mortality Rate
+
+## Set A
+```{r}
+M_male_matrix <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation.xlsx", sheet = "M matrix", col_names = F)
+male_matrix <- as.matrix(M_male_matrix)
+
+svd_male <- svd(male_matrix)
+
+# Extracting the components
+U <- svd_male$u
+D <- diag(svd_male$d)
+V <- svd_male$v
+
+# Estimate bx (first column of U matrix multiplied by the first singular value)
+bx <- U[,1]
+
+# Estimate kt (first column of V matrix multiplied by the first singular value)
+kt <- D[1,1] * V[,1]
+
+# Normalize bx and adjust kt accordingly
+bx <- bx / sum(bx)  # Normalizing bx to sum to 1
+kt <- kt * sum(bx)
+
+```
+
+```{r}
+parameters <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation.xlsx", sheet = "estimated ax bx")
+
+kt <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation.xlsx", sheet = "estimated kt")
+
+
+# Plot ax with age as x-axis
+ggplot(parameters, aes(x = x, y = ax)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated ax", x = "Age", y = "ax") +
+  theme_minimal()
+
+# Plot bx with age as x-axis
+ggplot(parameters, aes(x = x, y = bx)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated bx", x = "Age", y = "bx") +
+  theme_minimal()
+
+# Plot kt with Year as x-axis
+ggplot(kt, aes(x = t, y = kt)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated kt", x = "Year", y = "kt") +
+  theme_minimal()
+```
+
+## Set B
+
+```{r}
+M_male_adjusted <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation (adjusted).xlsx", sheet = "M matrix adjusted", col_names = F)
+male_matrix_adj <- as.matrix(M_male_adjusted)
+
+svd_male_adj <- svd(male_matrix_adj)
+
+# Extracting the components
+U_adj <- svd_male_adj$u
+D_adj <- diag(svd_male_adj$d)
+V_adj <- svd_male_adj$v
+
+# Estimate bx (first column of U matrix multiplied by the first singular value)
+bx_adj <- U_adj[,1]
+
+# Estimate kt (first column of V matrix multiplied by the first singular value)
+kt_adj <- D_adj[1,1] * V_adj[,1]
+
+# Normalize bx and adjust kt accordingly
+bx_adj <- bx_adj / sum(bx_adj)  # Normalizing bx to sum to 1
+kt_adj <- kt_adj * sum(bx_adj)
+```
+
+```{r}
+parameters_adj <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation (adjusted).xlsx", sheet = "estimated ax bx")
+
+
+# Plot ax with age as x-axis
+ggplot(parameters_adj, aes(x = x, y = ax)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated ax", x = "Age", y = "ax") +
+  theme_minimal()
+
+# Plot bx with age as x-axis
+ggplot(parameters_adj, aes(x = x, y = bx)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated bx", x = "Age", y = "bx") +
+  theme_minimal()
+
+kt_adj <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation (adjusted).xlsx", sheet = "estimated kt")
+
+# Plot kt with Year as x-axis
+ggplot(kt_adj, aes(x = t, y = kt)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated kt", x = "Year", y = "kt") +
+  theme_minimal()
+```
+
+```{r}
+# Convert kt to a time series object
+kt_adj_ts <- ts(kt_adj[,-1], start = c(2001), frequency = 1) 
+
+# Fit ARIMA(0,1,0) model
+arima_010_adj <- Arima(kt_adj_ts, order = c(0, 1, 0), include.drift = TRUE)
+
+# Print the summary of the ARIMA model
+summary(arima_010_adj)
+
+# Forecast future kt values (e.g., next 20 years)
+kt_adj_forecast <- forecast(arima_010_adj, h = 13)
+
+# Plot the forecast
+plot(kt_adj_forecast, main = "Forecast of kt using ARIMA(0,1,0)", xlab = "Year", ylab = "kt")
+
+# Check residuals
+checkresiduals(arima_010_adj)
+```
+
+## Set C
+```{r}
+male <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation v2.xlsx", sheet = "M matrix", col_names = F)
+male_m <- as.matrix(male)
+
+svd_m<- svd(male_m)
+
+# Extracting the components
+U_m <- svd_m$u
+D_m <- diag(svd_m$d)
+V_m <- svd_m$v
+
+# Estimate bx (first column of U matrix multiplied by the first singular value)
+bx_m <- U_m[,1]
+
+# Estimate kt (first column of V matrix multiplied by the first singular value)
+kt_m <- D_m[1,1] * V_m[,1]
+
+# Normalize bx and adjust kt accordingly
+bx_m <- bx_m / sum(bx_m)  # Normalizing bx to sum to 1
+kt_m <- kt_m * sum(bx_m)
+
+```
+
+```{r}
+parameters_m <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation v2.xlsx", sheet = "estimated ax bx")
+
+
+# Plot ax with age as x-axis
+ggplot(parameters_m, aes(x = x, y = ax)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated ax", x = "Age", y = "ax") +
+  theme_minimal()
+
+# Plot bx with age as x-axis
+ggplot(parameters_m, aes(x = x, y = bx)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated bx", x = "Age", y = "bx") +
+  theme_minimal()
+
+kt_m <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Male calculation v2.xlsx", sheet = "estimated kt")
+
+# Plot kt with Year as x-axis
+ggplot(kt_m, aes(x = t, y = kt)) +
+  geom_line(color = "black") +
+  labs(title = "Male estimated kt", x = "Year", y = "kt") +
+  theme_minimal()
+```
+
+```{r}
+# Convert kt to a time series object
+kt_ts_m <- ts(kt_m[,-1], start = c(2001), frequency = 1) 
+
+# Fit ARIMA(0,1,0) model
+arima_010_m <- Arima(kt_ts_m, order = c(0, 1, 0), include.drift = TRUE)
+
+# Print the summary of the ARIMA model
+summary(arima_010_m)
+
+# Forecast future kt values
+kt_forecast_m <- forecast(arima_010_m, h = 17)
+
+# Plot the forecast
+plot(kt_forecast_m, main = "Forecast of kt using ARIMA(0,1,0)", xlab = "Year", ylab = "kt")
+
+# Check residuals
+checkresiduals(arima_010_m)
+```
+
+
+## Combined
+```{r}
+# ax
+# Add a "Set" column to each data frame to identify the dataset
+parameters$Set <- "Set A"
+parameters_adj$Set <- "Set B"
+parameters_m$Set <- "Set C"
+
+# Combine the datasets into one data frame
+combined_parameters <- bind_rows(
+  parameters %>% select(x, ax, Set),
+  parameters_adj %>% select(x, ax, Set),
+  parameters_m %>% select(x, ax, Set)
+)
+
+# Plot ax estimates for all three sets
+ggplot(combined_parameters, aes(x = x, y = ax, color = Set)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Comparison of Estimated ax for Male Mortality",
+       x = "Age",
+       y = "ax",
+       color = "Data Set") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+```{r}
+# bx
+# Combine the datasets into one data frame
+combined_parameters <- bind_rows(
+  parameters %>% select(x, bx, Set),
+  parameters_adj %>% select(x, bx, Set),
+  parameters_m %>% select(x, bx, Set)
+)
+
+# Plot ax estimates for all three sets
+ggplot(combined_parameters, aes(x = x, y = bx, color = Set)) +
+  geom_line(size = 1) +
+  labs(title = "Comparison of Estimated bx for Male Mortality",
+       x = "Age",
+       y = "bx",
+       color = "Data Set") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+
+# Female Mortality
+
+## Set A
+
+```{r}
+M_female_matrix <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation.xlsx", sheet = "M matrix", col_names = F)
+female_matrix <- as.matrix(M_female_matrix)
+
+svd_female <- svd(female_matrix)
+
+# Extracting the components
+U <- svd_female$u
+D <- diag(svd_female$d)
+V <- svd_female$v
+
+# Estimate bx (first column of U matrix multiplied by the first singular value)
+bx <- U[,1]
+
+# Estimate kt (first column of V matrix multiplied by the first singular value)
+kt <- D[1,1] * V[,1]
+
+# Normalize bx and adjust kt accordingly
+bx <- bx / sum(bx)  # Normalizing bx to sum to 1
+kt <- kt * sum(bx)
+```
+
+```{r}
+parameters <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation.xlsx", sheet = "estimated ax bx")
+
+# Plot ax with age as x-axis
+ggplot(parameters, aes(x = x, y = ax)) +
+  geom_line(color = "black") +
+  labs(title = "estimated ax", x = "Age", y = "ax") +
+  theme_minimal()
+
+# Plot bx with age as x-axis
+ggplot(parameters, aes(x = x, y = bx)) +
+  geom_line(color = "black") +
+  labs(title = "estimated bx", x = "Age", y = "bx") +
+  theme_minimal()
+```
+
+## Set B
+
+```{r}
+M_female_adjusted <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation (adjusted).xlsx", sheet = "M matrix adjusted", col_names = F)
+female_matrix_adj <- as.matrix(M_female_adjusted)
+
+svd_female_adj <- svd(female_matrix_adj)
+
+# Extracting the components
+U_adj <- svd_female_adj$u
+D_adj <- diag(svd_female_adj$d)
+V_adj <- svd_female_adj$v
+
+# Estimate bx (first column of U matrix multiplied by the first singular value)
+bx_adj <- U_adj[,1]
+
+# Estimate kt (first column of V matrix multiplied by the first singular value)
+kt_adj <- D_adj[1,1] * V_adj[,1]
+
+# Normalize bx and adjust kt accordingly
+bx_adj <- bx_adj / sum(bx_adj)  # Normalizing bx to sum to 1
+kt_adj <- kt_adj * sum(bx_adj)
+```
+
+```{r}
+parameters_adj <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation (adjusted).xlsx", sheet = "estimated ax bx")
+
+
+# Plot ax with age as x-axis
+ggplot(parameters_adj, aes(x = x, y = ax)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated ax", x = "Age", y = "ax") +
+  theme_minimal()
+
+# Plot bx with age as x-axis
+ggplot(parameters_adj, aes(x = x, y = bx)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated bx", x = "Age", y = "bx") +
+  theme_minimal()
+
+kt_adj <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation (adjusted).xlsx", sheet = "estimated kt")
+
+# Plot kt with Year as x-axis
+ggplot(kt_adj, aes(x = t, y = kt)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated kt", x = "Year", y = "kt") +
+  theme_minimal()
+```
+
+```{r}
+# Convert kt to a time series object
+kt_adj_ts <- ts(kt_adj[,-1], start = c(2001), frequency = 1) 
+
+# Fit ARIMA(0,1,0) model
+arima_010_adj <- Arima(kt_adj_ts, order = c(0, 1, 0), include.drift = TRUE)
+
+# Print the summary of the ARIMA model
+summary(arima_010_adj)
+
+# Forecast future kt values (e.g., next 20 years)
+kt_adj_forecast <- forecast(arima_010_adj, h = 13)
+
+# Plot the forecast
+plot(kt_adj_forecast, main = "Forecast of kt using ARIMA(0,1,0)", xlab = "Year", ylab = "kt")
+
+# Check residuals
+checkresiduals(arima_010_adj)
+```
+
+
+## Set C
+
+```{r}
+female <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation v2.xlsx", sheet = "M matrix", col_names = F)
+female_m <- as.matrix(female)
+
+svd_f<- svd(female_m)
+
+# Extracting the components
+U_f <- svd_f$u
+D_f <- diag(svd_f$d)
+V_f <- svd_f$v
+
+# Estimate bx (first column of U matrix multiplied by the first singular value)
+bx_f <- U_f[,1]
+
+# Estimate kt (first column of V matrix multiplied by the first singular value)
+kt_f <- D_f[1,1] * V_f[,1]
+
+# Normalize bx and adjust kt accordingly
+bx_f <- bx_f / sum(bx_f)  # Normalizing bx to sum to 1
+kt_f <- kt_f * sum(bx_f)
+
+parameters_f <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation v2.xlsx", sheet = "estimated ax bx")
+
+
+# Plot ax with age as x-axis
+ggplot(parameters_f, aes(x = x, y = ax)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated ax", x = "Age", y = "ax") +
+  theme_minimal()
+
+# Plot bx with age as x-axis
+ggplot(parameters_f, aes(x = x, y = bx)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated bx", x = "Age", y = "bx") +
+  theme_minimal()
+
+kt_f <- read_excel("C:/Users/User/Desktop/SUNWAY/Y3S3 Research/Central Mortality Rate/Female calculation v2.xlsx", sheet = "estimated kt")
+
+# Plot kt with Year as x-axis
+ggplot(kt_f, aes(x = t, y = kt)) +
+  geom_line(color = "black") +
+  labs(title = "Female estimated kt", x = "Year", y = "kt") +
+  theme_minimal()
+```
+
+## Combined
+```{r}
+# Add a "Set" column to each data frame to identify the dataset
+parameters$Set <- "Set A"
+parameters_adj$Set <- "Set B"
+parameters_f$Set <- "Set C"
+
+# ax
+# Combine the datasets into one data frame
+combined_parameters <- bind_rows(
+  parameters %>% select(x, ax, Set),
+  parameters_adj %>% select(x, ax, Set),
+  parameters_f %>% select(x, ax, Set)
+)
+
+# Plot ax estimates for all three sets
+ggplot(combined_parameters, aes(x = x, y = ax, color = Set)) +
+  geom_line(linewidth = 1) +
+  labs(title = "Comparison of Estimated ax for Female Mortality",
+       x = "Age",
+       y = "ax",
+       color = "Data Set") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+
+```{r}
+# bx
+# Combine the datasets into one data frame
+combined_parameters <- bind_rows(
+  parameters %>% select(x, bx, Set),
+  parameters_adj %>% select(x, bx, Set),
+  parameters_f %>% select(x, bx, Set)
+)
+
+# Plot ax estimates for all three sets
+ggplot(combined_parameters, aes(x = x, y = bx, color = Set)) +
+  geom_line(size = 1) +
+  labs(title = "Comparison of Estimated bx for Female Mortality",
+       x = "Age",
+       y = "bx",
+       color = "Data Set") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
