@@ -17,7 +17,7 @@ Covid-Adjusted Mortality: $nM'x = \frac{nD'x}{nPx}$
 Source: Department of Statistics Malaysia (DoSM)
 
 ## 🔧 Tools & Models Used
-| Programming | Models | Packages | Methods | 
+| Programming/Software | Models | Packages | Skills | 
 | --- | --- | --- | --- |
 | R, Excel| Lee-Carter Model, ARIMA | ggplot2, fpp2, dplyr | Model fitting, residual analysis, time series forecasting, data analysis |
 
@@ -40,7 +40,7 @@ Source: Department of Statistics Malaysia (DoSM)
 - Compared model performance based on forecast accuracy
 - Analyzed the policy implications of projected mortality rates
 
-## 📈 Key Findings
+## 🔑 Key Findings
 - Significant spike in crude death rate in 2021 due to COVID-19.
 - Mortality rates in older age groups, especially males, are most affected by COVID-19.
 - Forecasted post-pandemic mortality rates are higher than pre-pandemic rates due to the excess death of COVID-19 but both declines over time.
